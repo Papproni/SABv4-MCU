@@ -57,6 +57,7 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define DTCH_I2C hi2c1
 
 /* USER CODE BEGIN Private defines */
 

@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": true,
+      "cwd": "c:/Projects/_SABv4/Apps/mcu/SABv4-MCU/template_projects/STM32H757XIH6/Drivers/CMSIS/DSP/Source/MatrixFunctions",
+      "program": "c:/Projects/_SABv4/Apps/mcu/SABv4-MCU/template_projects/STM32H757XIH6/Drivers/CMSIS/DSP/Source/MatrixFunctions/build/Debug/outDebug",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}
