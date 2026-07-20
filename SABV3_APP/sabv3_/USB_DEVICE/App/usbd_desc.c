@@ -65,8 +65,8 @@
 #define USBD_VID     1155
 #define USBD_LANGID_STRING     1033
 #define USBD_MANUFACTURER_STRING     "SABeffects"
-#define USBD_PID_HS     22336
-#define USBD_PRODUCT_STRING_HS     "SABv3"
+#define USBD_PID_HS     12222
+#define USBD_PRODUCT_STRING_HS     "SAB_DSP_APP"
 #define USBD_CONFIGURATION_STRING_HS     "CDC Config"
 #define USBD_INTERFACE_STRING_HS     "CDC Interface"
 

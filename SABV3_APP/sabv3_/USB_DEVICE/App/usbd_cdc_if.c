@@ -22,6 +22,7 @@
 #include "usbd_cdc_if.h"
 
 /* USER CODE BEGIN INCLUDE */
+//#include "usb_cdc_handler.h"
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -94,8 +95,169 @@ uint8_t UserRxBufferHS[APP_RX_DATA_SIZE];
 uint8_t UserTxBufferHS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
-static volatile uint8_t sabu_update_mode_requested;
-static uint8_t sabu_match_count;
+/* SAB updater framing: magic, command, reserved, payload length, sequence,
+ * payload, CRC-32.  Commands are HELLO(1), ERASE(2), WRITE(3), RESET(4).
+ * WRITE payload is a little-endian offset followed by 32-byte-aligned data. */
+#define SABU_MAGIC             0x55424153UL
+#define SABU_APP_BASE           0x08020000UL
+#define SABU_APP_END            0x08100000UL
+#define SABU_RING_SIZE          4096U
+#define SABU_MAX_PAYLOAD        516U
+
+static volatile uint8_t sabu_ring[SABU_RING_SIZE];
+static volatile uint16_t sabu_head;
+static volatile uint16_t sabu_tail;
+static uint8_t sabu_frame[12U + SABU_MAX_PAYLOAD + 4U] __attribute__((aligned(32)));
+static uint16_t sabu_frame_used;
+static uint16_t sabu_frame_expected;
+static uint8_t sabu_response[16];
+static uint8_t sabu_response_pending;
+static uint8_t sabu_reset_requested;
+
+static uint32_t sabu_u32(const uint8_t *p)
+{
+  return ((uint32_t)p[0]) | ((uint32_t)p[1] << 8) |
+         ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static void sabu_put_u32(uint8_t *p, uint32_t value)
+{
+  p[0] = (uint8_t)value; p[1] = (uint8_t)(value >> 8);
+  p[2] = (uint8_t)(value >> 16); p[3] = (uint8_t)(value >> 24);
+}
+
+static uint32_t sabu_crc32(const uint8_t *data, uint32_t length)
+{
+  uint32_t crc = 0xFFFFFFFFUL;
+  while (length-- != 0U) {
+    crc ^= *data++;
+    for (uint8_t bit = 0; bit < 8U; ++bit)
+      crc = (crc & 1U) ? (crc >> 1) ^ 0xEDB88320UL : (crc >> 1);
+  }
+  return ~crc;
+}
+
+static void sabu_reply(uint8_t command, uint8_t status, uint32_t sequence, uint32_t detail)
+{
+  sabu_put_u32(&sabu_response[0], SABU_MAGIC);
+  sabu_response[4] = (uint8_t)(command | 0x80U);
+  sabu_response[5] = status;
+  sabu_response[6] = 0; sabu_response[7] = 0;
+  sabu_put_u32(&sabu_response[8], sequence);
+  sabu_put_u32(&sabu_response[12], detail);
+  sabu_response_pending = 1U;
+}
+
+static FLASH_EraseInitTypeDef EraseInitStruct;
+static uint8_t sabu_erase_application_sector(uint32_t sector)
+{
+    FLASH_EraseInitTypeDef erase;
+    uint32_t sector_error = 0;
+    HAL_StatusTypeDef status;
+
+    if (sector > 7U)
+        return 2U;
+
+    memset(&erase, 0, sizeof(erase));
+
+    erase.TypeErase    = FLASH_TYPEERASE_SECTORS;
+    erase.Banks        = FLASH_BANK_1;
+    erase.Sector       = sector;
+    erase.NbSectors    = 1;
+    erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+
+    __disable_irq();
+
+    HAL_FLASH_Unlock();
+
+    __HAL_FLASH_CLEAR_FLAG(
+    FLASH_FLAG_EOP_BANK1      |
+    FLASH_FLAG_OPERR_BANK1    |
+    FLASH_FLAG_WRPERR_BANK1   |
+    FLASH_FLAG_PGSERR_BANK1   |
+    FLASH_FLAG_STRBERR_BANK1  |
+    FLASH_FLAG_INCERR_BANK1   |
+    FLASH_FLAG_RDPERR_BANK1   |
+    FLASH_FLAG_RDSERR_BANK1   |
+    FLASH_FLAG_SNECCERR_BANK1 |
+    FLASH_FLAG_DBECCERR_BANK1
+);
+
+    status = HAL_FLASHEx_Erase(&erase, &sector_error);
+
+    HAL_FLASH_Lock();
+
+//    SCB_CleanInvalidateDCache();
+//    SCB_InvalidateICache();
+
+    __enable_irq();
+
+    if (status != HAL_OK)
+    {
+        // Put a breakpoint here and inspect:
+        // HAL_FLASH_GetError()
+        // sector_error
+        return (uint8_t)HAL_FLASH_GetError();
+    }
+
+    return 0U;
+}
+
+static uint8_t sabu_write_application(const uint8_t *payload, uint16_t length)
+{
+    if ((length < 36U) || (((length - 4U) & 31U) != 0U))
+        return 2U;
+
+    const uint32_t offset = sabu_u32(payload);
+    uint32_t address = SABU_APP_BASE + offset;
+    const uint32_t bytes = length - 4U;
+
+    if ((address < SABU_APP_BASE) ||
+        ((address + bytes) > SABU_APP_END) ||
+        ((address & 31U) != 0U))
+    {
+        return 3U;
+    }
+
+    /* Source must be word aligned */
+    if ((((uint32_t)(payload + 4U)) & 3U) != 0U)
+        return 5U;
+
+    __disable_irq();
+
+    HAL_FLASH_Unlock();
+
+    __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_ALL_ERRORS_BANK1);
+
+    for (uint32_t i = 0; i < bytes; i += 32U)
+    {
+        HAL_StatusTypeDef status =
+            HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD,
+                              address + i,
+                              (uint32_t)(payload + 4U + i));
+
+        if (status != HAL_OK)
+        {
+            uint32_t err = HAL_FLASH_GetError();
+
+            HAL_FLASH_Lock();
+            // SCB_CleanInvalidateDCache();
+            // SCB_InvalidateICache();
+            __enable_irq();
+
+            return (uint8_t)err;
+        }
+    }
+
+    HAL_FLASH_Lock();
+
+    // SCB_CleanInvalidateDCache();
+    // SCB_InvalidateICache();
+
+    __enable_irq();
+
+    return 0U;
+}
 
 /* USER CODE END PRIVATE_VARIABLES */
 
@@ -265,19 +427,16 @@ static int8_t CDC_Control_HS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_HS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 11 */
-  /* SABU requests a reboot into the resident application updater. */
-  static const uint8_t request[] = { 'S', 'A', 'B', 'U' };
-  for (uint32_t i = 0U; i < *Len; ++i) {
-    if (Buf[i] == request[sabu_match_count]) {
-      if (++sabu_match_count == sizeof(request)) {
-        static uint8_t reply[] = "OK\r\n";
-        (void)CDC_Transmit_HS(reply, sizeof(reply) - 1U);
-        sabu_update_mode_requested = 1U;
-        sabu_match_count = 0U;
-      }
-    } else {
-      sabu_match_count = (Buf[i] == request[0]) ? 1U : 0U;
+  /* Only enqueue here: flash erase/programming must not run in the USB IRQ. */
+  for (uint32_t i = 0; i < *Len; ++i) {
+    const uint16_t next = (uint16_t)((sabu_head + 1U) % SABU_RING_SIZE);
+    if (next == sabu_tail) {
+      /* Drop a damaged stream; the host will time out and report the error. */
+      sabu_tail = sabu_head;
+      break;
     }
+    sabu_ring[sabu_head] = Buf[i];
+    sabu_head = next;
   }
 
   // Prepare for next reception
@@ -333,9 +492,72 @@ static int8_t CDC_TransmitCplt_HS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
 
-uint8_t USB_UpdateModeRequested(void)
+void FW_Update_Process(void)
 {
-  return sabu_update_mode_requested;
+  if (sabu_response_pending != 0U) {
+    if (CDC_Transmit_HS(sabu_response, sizeof(sabu_response)) == USBD_OK)
+      sabu_response_pending = 0U;
+    return;
+  }
+
+  while (sabu_tail != sabu_head) {
+    const uint8_t byte = sabu_ring[sabu_tail];
+    sabu_tail = (uint16_t)((sabu_tail + 1U) % SABU_RING_SIZE);
+
+    if (sabu_frame_used < sizeof(sabu_frame))
+      sabu_frame[sabu_frame_used++] = byte;
+    else
+      sabu_frame_used = 0U;
+
+    if (sabu_frame_used == 12U) {
+      const uint16_t payload_length = (uint16_t)sabu_frame[6] |
+                                      ((uint16_t)sabu_frame[7] << 8);
+      if ((sabu_u32(sabu_frame) != SABU_MAGIC) ||
+          (payload_length > SABU_MAX_PAYLOAD)) {
+        sabu_frame_used = 0U;
+        continue;
+      }
+      sabu_frame_expected = (uint16_t)(12U + payload_length + 4U);
+    }
+
+    if ((sabu_frame_expected != 0U) && (sabu_frame_used == sabu_frame_expected)) {
+      const uint8_t command = sabu_frame[4];
+      const uint16_t length = (uint16_t)sabu_frame[6] | ((uint16_t)sabu_frame[7] << 8);
+      const uint32_t sequence = sabu_u32(&sabu_frame[8]);
+      const uint32_t received_crc = sabu_u32(&sabu_frame[12U + length]);
+      uint8_t status = 0U;
+      uint32_t detail = 0U;
+
+      if (received_crc != sabu_crc32(sabu_frame, 12U + length)) {
+        status = 10U;
+      } else if (command == 1U) {
+        detail = SABU_APP_END - SABU_APP_BASE;
+      } else if (command == 2U) {
+        if (length != 1U) {
+          status = 12U;
+        } else {
+          detail = sabu_frame[12];
+          status = sabu_erase_application_sector(sabu_frame[12]);
+        }
+      } else if (command == 3U) {
+        status = sabu_write_application(&sabu_frame[12], length);
+      } else if (command == 4U) {
+          sabu_reset_requested = 1U;
+      } else {
+        status = 11U;
+      }
+
+      sabu_reply(command, status, sequence, detail);
+      sabu_frame_used = 0U;
+      sabu_frame_expected = 0U;
+      return;
+    }
+  }
+}
+
+uint8_t FW_Update_ResetRequested(void)
+{
+  return sabu_reset_requested;
 }
 
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */

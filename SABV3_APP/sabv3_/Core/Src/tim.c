@@ -41,10 +41,9 @@ void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  /* TIM2 clock is 275 MHz with the current clock tree: 10 kHz / 2000 = 5 Hz. */
-  htim2.Init.Prescaler = 27499;
+  htim2.Init.Prescaler = 137;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 1999;
+  htim2.Init.Period = 999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)

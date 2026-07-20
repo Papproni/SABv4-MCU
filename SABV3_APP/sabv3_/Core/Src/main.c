@@ -25,7 +25,6 @@
 #include "spi.h"
 #include "tim.h"
 #include "usb_device.h"
-#include "usbd_cdc_if.h"
 #include "gpio.h"
 #include "fmc.h"
 
@@ -33,6 +32,7 @@
 /* USER CODE BEGIN Includes */
 #include "stm32h7xx_hal.h"
 #include "AD1939_driver.h"
+#include "usbd_cdc_if.h"
 // #include "usbd_core.h"
 //#include "usbd_audio.h"
 // #include "usbd_desc.h"
@@ -298,10 +298,10 @@ int main(void)
   /* Enable the CPU Cache */
 
   /* Enable I-Cache---------------------------------------------------------*/
-//  SCB_EnableICache();
+  SCB_EnableICache();
 
   /* Enable D-Cache---------------------------------------------------------*/
-//  SCB_EnableDCache();
+  SCB_EnableDCache();
 
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -324,14 +324,14 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-//  MX_DMA_Init();
-//  MX_SAI1_Init();
-//  MX_SPI1_Init();
-//  MX_FMC_Init();
-//  MX_OCTOSPI1_Init();
-//  MX_I2C4_Init();
-//  MX_TIM2_Init();
-//  MX_USB_DEVICE_Init();
+  MX_DMA_Init();
+  MX_SAI1_Init();
+  MX_SPI1_Init();
+  MX_FMC_Init();
+  MX_OCTOSPI1_Init();
+  MX_I2C4_Init();
+  MX_TIM2_Init();
+  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   // HAL_TIM_Base_Start_IT(&htim2);
   // // init SAI interface
@@ -342,10 +342,10 @@ int main(void)
 	// ad1939_init(&hspi1);
 	// init_intercom(&intercom_st, 0x10,&hi2c4);
 
-  // /* USER CODE END 2 */
+  /* USER CODE END 2 */
 
-  // /* Infinite loop */
-  // /* USER CODE BEGIN WHILE */
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
 	// HAL_GPIO_WritePin(FSW_LED1_GPIO_Port, FSW_LED1_Pin, 0);
 	// HAL_GPIO_WritePin(FSW_LED2_GPIO_Port, FSW_LED2_Pin, 0);
 	// HAL_GPIO_WritePin(FSW_LED3_GPIO_Port, FSW_LED3_Pin, 0);
@@ -381,6 +381,12 @@ int main(void)
       {
         HAL_GPIO_TogglePin(DSP_OK_GPIO_Port, DSP_OK_Pin);
         last_blink_tick = HAL_GetTick();
+      }
+      FW_Update_Process();
+      if (FW_Update_ResetRequested() != 0U)
+      {
+//        HAL_Delay(20);
+        NVIC_SystemReset();
       }
 //	 if (USB_UpdateModeRequested() != 0U) {
 //	 	HAL_Delay(20);

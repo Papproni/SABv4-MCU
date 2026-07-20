@@ -109,7 +109,9 @@ extern USBD_CDC_ItfTypeDef USBD_Interface_fops_HS;
 uint8_t CDC_Transmit_HS(uint8_t* Buf, uint16_t Len);
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
-uint8_t USB_UpdateModeRequested(void);
+/* Called from the bootloader main loop, never from the USB IRQ. */
+void FW_Update_Process(void);
+uint8_t FW_Update_ResetRequested(void);
 
 /* USER CODE END EXPORTED_FUNCTIONS */
 

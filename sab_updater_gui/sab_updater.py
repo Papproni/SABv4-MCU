@@ -21,6 +21,40 @@ class Updater:
         self.serial = serial.Serial(port, 115200, timeout=1, write_timeout=3)
         time.sleep(0.15)
 
+    def _attempt_reconnect(self, timeout_s: float):
+        """Try to reopen the serial port within timeout_s seconds.
+        Prefer the same port name, otherwise search for the known VID/PID.
+        On success replace self.serial and reset sequence counter.
+        """
+        deadline = time.monotonic() + max(0.0, timeout_s or 0)
+        try:
+            self.serial.close()
+        except Exception:
+            pass
+
+        while time.monotonic() < deadline:
+            # First try same port name
+            try:
+                self.serial = serial.Serial(self.port, 115200, timeout=1, write_timeout=3)
+                time.sleep(0.15)
+                self.seq = 1
+                return
+            except (serial.SerialException, OSError):
+                # search for device by VID/PID
+                for p in list_ports.comports():
+                    if getattr(p, "vid", None) == 1155 and getattr(p, "pid", None) == 12222:
+                        try:
+                            self.port = p.device
+                            self.serial = serial.Serial(self.port, 115200, timeout=1, write_timeout=3)
+                            time.sleep(0.15)
+                            self.seq = 1
+                            return
+                        except (serial.SerialException, OSError):
+                            continue
+                time.sleep(0.2)
+
+        raise serial.SerialException("Failed to reconnect to device within timeout")
+
     def close(self):
         self.serial.close()
 
@@ -31,10 +65,12 @@ class Updater:
         self.seq += 1
         return result, sequence
 
-    def command(self, command: int, payload=b"", timeout=25):
+    def command(self, command: int, payload=b"", timeout=25, reply=True):
         packet, sequence = self.packet(command, payload)
         self.serial.write(packet)
         self.serial.flush()
+        if(reply == False):
+            return
         deadline = time.monotonic() + timeout  # Sector erase may take several seconds.
         received = bytearray()
         while time.monotonic() < deadline:
@@ -48,7 +84,7 @@ class Updater:
                 return detail
             received.clear()
         raise RuntimeError("Timed out waiting for device response")
-
+    
     def wait_for_bootloader(self):
         # First try the already-open port (device may have booted directly into BL).
         for _ in range(15):
@@ -74,6 +110,35 @@ class Updater:
             raise RuntimeError("Firmware is larger than the 896 KiB application partition")
         image += b"\xFF" * ((-len(image)) % 32)
         self.progress(0, len(image))
+        # Ask the device to reset into bootloader without blocking for a reply.
+        # Write the reset packet, close the connection and wait for the device
+        # to re-enumerate (it will briefly disconnect from USB).
+        # try:
+        #     # ensure sequence counter starts fresh for the bootloader
+        #     self.seq = 1
+        #     reset_packet, _ = self.packet(CMD_RESET)
+        #     try:
+        #         self.serial.write(reset_packet)
+        #         self.serial.flush()
+        #     except serial.SerialException:
+        #         # ignore — device likely disconnected immediately after reset
+        #         pass
+        #     try:
+        #         self.serial.close()
+        #     except Exception:
+        #         pass
+        #     # wait up to 8 seconds for the bootloader to reappear
+        #     self._attempt_reconnect(8.0)
+        # except Exception as exc:
+        #     # If reconnect failed, surface the error so the caller can handle it
+        #     raise RuntimeError(f"Failed to reset/reconnect device: {exc}")
+        
+        self.command(CMD_RESET, reply=False)
+        time.sleep(0.5)  # give the bootloader a moment to finish initializing
+        
+        # Find com port again and reconnect
+        self._attempt_reconnect(8.0)
+        
         self.log(f"Erasing application area for {len(image):,} bytes…")
         for sector in range(1, 8):
             self.log(f"Erasing flash sector {sector}/7…")
@@ -110,15 +175,81 @@ class Window(tk.Tk):
         ttk.Label(root, textvariable=self.progress_text).grid(row=3, column=0, columnspan=3, sticky="w")
         self.progress = ttk.Progressbar(root, length=500, mode="determinate", maximum=100)
         self.progress.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(2, 8))
-        self.output = tk.Text(root, width=66, height=11, state="disabled")
-        self.output.grid(row=5, column=0, columnspan=3)
+        self.bootloader_text = tk.StringVar(value="SAB bootloader: none")
+        ttk.Label(root, textvariable=self.bootloader_text).grid(row=5, column=0, columnspan=3, sticky="w")
+        self.output = tk.Text(root, width=66, height=10, state="disabled")
+        self.output.grid(row=6, column=0, columnspan=3)
+        self.bootloader_ports = set()
+        self.last_port_details = {}
         self.refresh()
+        self.scan_for_bootloader()
 
     def refresh(self):
         values = [p.device for p in list_ports.comports()]
         self.ports["values"] = values
         if values and self.port.get() not in values:
             self.port.set(values[0])
+
+    def scan_for_bootloader(self):
+        current_ports = list_ports.comports()
+        new_bootloader_ports = set()
+        port_details = []
+
+        current_devices = set()
+
+        for port in current_ports:
+            # pyserial's ListPortInfo has .vid and .pid when available
+            vid = getattr(port, "vid", None)
+            pid = getattr(port, "pid", None)
+            manufacturer = port.manufacturer or ""
+            product = port.product or ""
+            description = port.description or ""
+
+            # Match either by VID/PID or by the product/manufacturer/description string.
+            if (vid == 1155 and pid == 12222) or \
+               ("SAB_bootloader" in manufacturer) or \
+               ("SAB_bootloader" in product) or \
+               ("SAB_bootloader" in description):
+                new_bootloader_ports.add(port.device)
+
+            # Always prepare the details string and only log if it changed.
+            details = f"{port.device}: vid={vid}, pid={pid}, manufacturer='{manufacturer}', product='{product}'"
+            port_details.append(details)
+            current_devices.add(port.device)
+            if self.last_port_details.get(port.device) != details:
+                # Only log changed/new details
+                self.log(details)
+                self.last_port_details[port.device] = details
+
+        if new_bootloader_ports != self.bootloader_ports:
+            self.bootloader_ports = new_bootloader_ports
+            if self.bootloader_ports:
+                ports_list = ", ".join(sorted(self.bootloader_ports))
+                self.bootloader_text.set(f"SAB bootloader: {ports_list}")
+                self.log(f"SAB_bootloader detected on {ports_list}")
+                # Auto-select the first detected bootloader port
+                try:
+                    candidate = sorted(self.bootloader_ports)[0]
+                    # Ensure combobox includes the candidate
+                    values = list(self.ports["values"]) if self.ports["values"] else []
+                    if candidate not in values:
+                        # refresh the list from the system ports
+                        values = [p.device for p in list_ports.comports()]
+                        self.ports["values"] = values
+                    self.port.set(candidate)
+                    self.log(f"Auto-selected port {candidate}")
+                except Exception:
+                    pass
+            else:
+                self.bootloader_text.set("SAB bootloader: none")
+                self.log("SAB_bootloader no longer detected")
+
+        # Remove details for disappeared ports so they can be logged again if reconnected
+        removed = set(self.last_port_details) - current_devices
+        for dev in removed:
+            del self.last_port_details[dev]
+
+        self.after(500, self.scan_for_bootloader)
 
     def choose(self):
         name = filedialog.askopenfilename(filetypes=[("Firmware binary", "*.bin"), ("All files", "*.*")])
