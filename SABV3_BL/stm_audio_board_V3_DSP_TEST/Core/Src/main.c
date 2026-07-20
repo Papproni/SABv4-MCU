@@ -214,12 +214,12 @@ int main(void)
       }
 
       /* Recovery/idle heartbeat.  Do not delay here: USB must stay responsive. */
-      if ((HAL_GetTick() - last_blink_tick) >= 1000U)
+      if ((HAL_GetTick() - last_blink_tick) >= 100U)
       {
         HAL_GPIO_TogglePin(DSP_OK_GPIO_Port, DSP_OK_Pin);
         last_blink_tick = HAL_GetTick();
       }
-      if ((HAL_GetTick() - app_blink_tick) >= 10000U)
+      if ((HAL_GetTick() - app_blink_tick) >= 1000U)
 	   {
 		 JumpToApplication();
 	   }
