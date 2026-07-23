@@ -219,7 +219,7 @@ int main(void)
         HAL_GPIO_TogglePin(DSP_OK_GPIO_Port, DSP_OK_Pin);
         last_blink_tick = HAL_GetTick();
       }
-      if ((HAL_GetTick() - app_blink_tick) >= 1000U)
+      if ((HAL_GetTick() - app_blink_tick) >= 4000U)
 	   {
 		 JumpToApplication();
 	   }

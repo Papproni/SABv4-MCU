@@ -19,6 +19,18 @@
           "ignoreFailures": true
         }
       ]
+    },
+    {
+      "name": "Python: SAB Updater GUI",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/sab_updater_gui/sab_updater.py",
+      "cwd": "${workspaceFolder}/sab_updater_gui",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/sab_updater_gui"
+      }
     }
   ]
 }
