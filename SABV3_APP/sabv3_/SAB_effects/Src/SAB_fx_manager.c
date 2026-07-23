@@ -323,7 +323,7 @@ void SAB_fx_manager_deinit( SAB_fx_manager_tst* self){
     
 }
 
-#define USER_FLASH_ADDRESS 0x08080000  // Base address of USER_FLASH section
+#define USER_FLASH_ADDRESS 0x080E0000  // Base address of USER_FLASH section
 #define NUM_OF_PRESETS 45
 preset_saves_tst 	 SAB_PRESET_SAVE_FLASH_DATA[NUM_OF_PRESETS] __attribute__((section(".user_data")));
 preset_saves_tst 	 SAB_PRESET_SAVE_RAM_DATA[NUM_OF_PRESETS] __attribute__((section(".preset_save_ram")));

@@ -100,9 +100,16 @@ uint8_t UserTxBufferHS[APP_TX_DATA_SIZE];
  * WRITE payload is a little-endian offset followed by 32-byte-aligned data. */
 #define SABU_MAGIC             0x55424153UL
 #define SABU_APP_BASE           0x08020000UL
-#define SABU_APP_END            0x08100000UL
+#define SABU_APP_END            0x080E0000UL
 #define SABU_RING_SIZE          4096U
 #define SABU_MAX_PAYLOAD        516U
+
+enum SABU_COMMANDS {
+  SABU_HELLO = 1,
+  SABU_ERASE = 2,
+  SABU_WRITE = 3,
+  SABU_RESET = 4
+};
 
 static volatile uint8_t sabu_ring[SABU_RING_SIZE];
 static volatile uint16_t sabu_head;
@@ -160,10 +167,16 @@ static uint8_t sabu_erase_application_sector(uint32_t sector)
 
     memset(&erase, 0, sizeof(erase));
 
-    erase.TypeErase    = FLASH_TYPEERASE_SECTORS;
+    // erase.TypeErase    = FLASH_TYPEERASE_SECTORS;
+    // erase.Banks        = FLASH_BANK_1;
+    // erase.Sector       = sector;
+    // erase.NbSectors    = 1;
+    // erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+
+      erase.TypeErase    = FLASH_TYPEERASE_SECTORS;
     erase.Banks        = FLASH_BANK_1;
-    erase.Sector       = sector;
-    erase.NbSectors    = 1;
+    erase.Sector       = 1;
+    erase.NbSectors    = 4;
     erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
 
     __disable_irq();
@@ -530,18 +543,18 @@ void FW_Update_Process(void)
 
       if (received_crc != sabu_crc32(sabu_frame, 12U + length)) {
         status = 10U;
-      } else if (command == 1U) {
+      } else if (command == SABU_HELLO) {
         detail = SABU_APP_END - SABU_APP_BASE;
-      } else if (command == 2U) {
+      } else if (command == SABU_ERASE) {
         if (length != 1U) {
           status = 12U;
         } else {
           detail = sabu_frame[12];
           status = sabu_erase_application_sector(sabu_frame[12]);
         }
-      } else if (command == 3U) {
+      } else if (command == SABU_WRITE) {
         status = sabu_write_application(&sabu_frame[12], length);
-      } else if (command == 4U) {
+      } else if (command == SABU_RESET) {
           sabu_reset_requested = 1U;
       } else {
         status = 11U;

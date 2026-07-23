@@ -140,7 +140,7 @@ class Updater:
         self._attempt_reconnect(8.0)
         
         self.log(f"Erasing application area for {len(image):,} bytes…")
-        for sector in range(1, 8):
+        for sector in range(7, 8):
             self.log(f"Erasing flash sector {sector}/7…")
             self.command(CMD_ERASE, bytes([sector]), timeout=30)
         self.log("Application area erased (sectors 1–7)")

@@ -20,6 +20,7 @@
 #include "main.h"
 #include "dma.h"
 #include "i2c.h"
+#include "iwdg.h"
 #include "octospi.h"
 #include "sai.h"
 #include "spi.h"
@@ -332,32 +333,33 @@ int main(void)
   MX_I2C4_Init();
   MX_TIM2_Init();
   MX_USB_DEVICE_Init();
+  MX_IWDG1_Init();
   /* USER CODE BEGIN 2 */
-  // HAL_TIM_Base_Start_IT(&htim2);
-  // // init SAI interface
-	// HAL_SAI_Transmit_DMA(&hsai_BlockA1, (uint8_t*)output_i2s_buffer_au32, 	16);
-	// HAL_SAI_Receive_DMA(&hsai_BlockB1, (uint8_t*)input_i2s_buffer_au32, 	16);
+  HAL_TIM_Base_Start_IT(&htim2);
+  // init SAI interface
+	HAL_SAI_Transmit_DMA(&hsai_BlockA1, (uint8_t*)output_i2s_buffer_au32, 	16);
+	HAL_SAI_Receive_DMA(&hsai_BlockB1, (uint8_t*)input_i2s_buffer_au32, 	16);
 
   // // init CODEC
-	// ad1939_init(&hspi1);
-	// init_intercom(&intercom_st, 0x10,&hi2c4);
+	ad1939_init(&hspi1);
+	init_intercom(&intercom_st, 0x10,&hi2c4);
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-	// HAL_GPIO_WritePin(FSW_LED1_GPIO_Port, FSW_LED1_Pin, 0);
-	// HAL_GPIO_WritePin(FSW_LED2_GPIO_Port, FSW_LED2_Pin, 0);
-	// HAL_GPIO_WritePin(FSW_LED3_GPIO_Port, FSW_LED3_Pin, 0);
-	// HAL_GPIO_WritePin(FSW_LED4_GPIO_Port, FSW_LED4_Pin, 0);
+	HAL_GPIO_WritePin(FSW_LED1_GPIO_Port, FSW_LED1_Pin, 0);
+	HAL_GPIO_WritePin(FSW_LED2_GPIO_Port, FSW_LED2_Pin, 0);
+	HAL_GPIO_WritePin(FSW_LED3_GPIO_Port, FSW_LED3_Pin, 0);
+	HAL_GPIO_WritePin(FSW_LED4_GPIO_Port, FSW_LED4_Pin, 0);
 
 
-	// HAL_GPIO_WritePin(FSW_LED3_GPIO_Port, FSW_LED3_Pin, 1);
-	// HAL_GPIO_WritePin(FSW_LED4_GPIO_Port, FSW_LED4_Pin, 1);
+	HAL_GPIO_WritePin(FSW_LED3_GPIO_Port, FSW_LED3_Pin, 1);
+	HAL_GPIO_WritePin(FSW_LED4_GPIO_Port, FSW_LED4_Pin, 1);
 
-	// HAL_I2C_EnableListen_IT(&hi2c4);
+	HAL_I2C_EnableListen_IT(&hi2c4);
 
-	// SAB_fx_manager_init(&SAB_fx_manager_st, &intercom_st, &effects_io_port, &fsw_btn_1_pressed, &fsw_btn_2_pressed);
+	SAB_fx_manager_init(&SAB_fx_manager_st, &intercom_st, &effects_io_port, &fsw_btn_1_pressed, &fsw_btn_2_pressed);
 	
     /* Enable the TRC (Trace) */
     // CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
@@ -371,7 +373,7 @@ int main(void)
 
     // /* Enable the cycle counter */
     // DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-    // clear_sdram_memory();
+    clear_sdram_memory();
     uint32_t last_blink_tick = 0;
   while (1)
   {
@@ -379,6 +381,7 @@ int main(void)
 //	  HAL_GPIO_TogglePin(DSP_OK_GPIO_Port, DSP_OK_Pin);
      if ((HAL_GetTick() - last_blink_tick) >=250)
       {
+    	 HAL_IWDG_Refresh(&hiwdg1);
         HAL_GPIO_TogglePin(DSP_OK_GPIO_Port, DSP_OK_Pin);
         last_blink_tick = HAL_GetTick();
       }
@@ -388,73 +391,70 @@ int main(void)
 //        HAL_Delay(20);
         NVIC_SystemReset();
       }
-//	 if (USB_UpdateModeRequested() != 0U) {
-//	 	HAL_Delay(20);
-//	 	JumpToBootloader();
-//	 }
-//	 if(intercom_st.save_un.save_command>0){
-//	 	SAB_save_preset_to_flash(&SAB_fx_manager_st);
-//	 	intercom_st.save_un.save_command = 0;
-//	 }
-//	 if(intercom_st.dsp_fw_update_flg){
-//	 	JumpToBootloader();
-//	 }
-//
-//	   if(ADC_READY_FLAG){
-//	 	  ADC_READY_FLAG = 0;
-//	 	  // // Reset the counter to ensure a clean start
-//	 	  //     DWT->CYCCNT = 0;
-//
-//	 	  //     // Record the starting cycle count
-//	 	  //     startCycles = DWT->CYCCNT;
-//	 	SAB_fx_manager_process(&SAB_fx_manager_st);
-//	 	 // Record the ending cycle count
-//	 	    // endCycles = DWT->CYCCNT;
-//
-//	 	    // // Calculate the difference
-//	 	    // totalCycles = endCycles - startCycles;
-//
-//	 	    // time_to_process_f32 = (float)totalCycles/550;
-//	 	if(1 == preset_down_pressed){
-//	 		preset_down_pressed = 0;
-//	 		SAB_preset_down_pressed(&SAB_fx_manager_st);
-//	 	}
-//	 	if(1 == preset_up_pressed){
-//	 		preset_up_pressed = 0;
-//	 		SAB_preset_up_pressed(&SAB_fx_manager_st);
-//	 	}
-//
-//     if(fsw_btn_1_pressed){
-//
-//     }
-//
-//
-//
-//	 	if(fsw_btn_1_pressed | fsw_btn_2_pressed){
-//	 		SAB_fsw_pressed_callback(&SAB_fx_manager_st);
-//	 		switch (SAB_fx_manager_st.preset_mode_st.preset_mode_en)
-//	 		{
-//	 		case PRESET_MODE_A_ACTIVE:
-//	 			HAL_GPIO_WritePin(FSW_LED1_GPIO_Port, FSW_LED1_Pin, 1);
-//	 			HAL_GPIO_WritePin(FSW_LED2_GPIO_Port, FSW_LED2_Pin, 0);
-//	 			break;
-//	 		case PRESET_MODE_B_ACTIVE:
-//	 			HAL_GPIO_WritePin(FSW_LED1_GPIO_Port, FSW_LED1_Pin, 0);
-//	 			HAL_GPIO_WritePin(FSW_LED2_GPIO_Port, FSW_LED2_Pin, 1);
-//	 			break;
-//
-//	 		default:
-//	 			HAL_GPIO_WritePin(FSW_LED1_GPIO_Port, FSW_LED1_Pin, 0);
-//	 			HAL_GPIO_WritePin(FSW_LED2_GPIO_Port, FSW_LED2_Pin, 0);
-//	 			break;
-//	 		}
-//	 		fsw_btn_1_pressed = 0;
-//	 		fsw_btn_2_pressed = 0;
-//	 	}
-//
-//
-//
-//	  }
+
+	 if(intercom_st.save_un.save_command>0){
+	 	SAB_save_preset_to_flash(&SAB_fx_manager_st);
+	 	intercom_st.save_un.save_command = 0;
+	 }
+	 if(intercom_st.dsp_fw_update_flg){
+	 	JumpToBootloader();
+	 }
+
+	   if(ADC_READY_FLAG){
+	 	  ADC_READY_FLAG = 0;
+	 	  // // Reset the counter to ensure a clean start
+	 	  //     DWT->CYCCNT = 0;
+
+	 	  //     // Record the starting cycle count
+	 	  //     startCycles = DWT->CYCCNT;
+	 	SAB_fx_manager_process(&SAB_fx_manager_st);
+	 	 // Record the ending cycle count
+	 	    // endCycles = DWT->CYCCNT;
+
+	 	    // // Calculate the difference
+	 	    // totalCycles = endCycles - startCycles;
+
+	 	    // time_to_process_f32 = (float)totalCycles/550;
+	 	if(1 == preset_down_pressed){
+	 		preset_down_pressed = 0;
+	 		SAB_preset_down_pressed(&SAB_fx_manager_st);
+	 	}
+	 	if(1 == preset_up_pressed){
+	 		preset_up_pressed = 0;
+	 		SAB_preset_up_pressed(&SAB_fx_manager_st);
+	 	}
+
+    if(fsw_btn_1_pressed){
+
+    }
+
+
+
+	 	if(fsw_btn_1_pressed | fsw_btn_2_pressed){
+	 		SAB_fsw_pressed_callback(&SAB_fx_manager_st);
+	 		switch (SAB_fx_manager_st.preset_mode_st.preset_mode_en)
+	 		{
+	 		case PRESET_MODE_A_ACTIVE:
+	 			HAL_GPIO_WritePin(FSW_LED1_GPIO_Port, FSW_LED1_Pin, 1);
+	 			HAL_GPIO_WritePin(FSW_LED2_GPIO_Port, FSW_LED2_Pin, 0);
+	 			break;
+	 		case PRESET_MODE_B_ACTIVE:
+	 			HAL_GPIO_WritePin(FSW_LED1_GPIO_Port, FSW_LED1_Pin, 0);
+	 			HAL_GPIO_WritePin(FSW_LED2_GPIO_Port, FSW_LED2_Pin, 1);
+	 			break;
+
+	 		default:
+	 			HAL_GPIO_WritePin(FSW_LED1_GPIO_Port, FSW_LED1_Pin, 0);
+	 			HAL_GPIO_WritePin(FSW_LED2_GPIO_Port, FSW_LED2_Pin, 0);
+	 			break;
+	 		}
+	 		fsw_btn_1_pressed = 0;
+	 		fsw_btn_2_pressed = 0;
+	 	}
+
+
+
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -484,8 +484,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_LSI
+                              |RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;

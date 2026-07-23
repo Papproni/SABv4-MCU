@@ -24,10 +24,9 @@ MEMORY
   DTCMRAM   (xrw) : ORIGIN = 0x20000000, LENGTH = 128K
 
   /* Bootloader Flash */
-  FLASH_BOOT (rx) : ORIGIN = 0x08000000, LENGTH = 128K
-
-  /* App Flash (not used in BL but defined for documentation) */
-  FLASH_APP  (rx) : ORIGIN = 0x08020000, LENGTH = 896K
+  FLASH_BOOT (rx)   : ORIGIN = 0x08000000, LENGTH = 128K
+  FLASH  (rx)       : ORIGIN = 0x08020000, LENGTH = 796K
+  USER_FLASH (rxw)  : ORIGIN = 0x080E0000,   LENGTH = 128k
 
   RAM_D1    (xrw) : ORIGIN = 0x24000000, LENGTH = 320K
   RAM_D2    (xrw) : ORIGIN = 0x30000000, LENGTH = 32K
